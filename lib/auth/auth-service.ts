@@ -7,60 +7,77 @@ export class AuthService {
    * Get current user from server-side
    */
   static async getCurrentUser(): Promise<User | null> {
-    const supabase = await createClient()
+    try {
+      const supabase = await createClient()
 
-    const {
-      data: { user: authUser },
-      error,
-    } = await supabase.auth.getUser()
+      const {
+        data: { user: authUser },
+        error,
+      } = await supabase.auth.getUser()
 
-    if (error || !authUser) {
+      if (error || !authUser) {
+        return null
+      }
+
+      // Get user profile
+      const { data: userProfile } = await supabase.from("users").select("*").eq("id", authUser.id).single()
+
+      return userProfile
+    } catch (error) {
+      console.error("[v0] Error in getCurrentUser:", error)
       return null
     }
-
-    // Get user profile
-    const { data: userProfile } = await supabase.from("users").select("*").eq("id", authUser.id).single()
-
-    return userProfile
   }
 
   /**
    * Get current user from client-side
    */
   static async getCurrentUserClient(): Promise<User | null> {
-    const supabase = createBrowserClient()
+    try {
+      const supabase = createBrowserClient()
 
-    const {
-      data: { user: authUser },
-      error,
-    } = await supabase.auth.getUser()
+      const {
+        data: { user: authUser },
+        error,
+      } = await supabase.auth.getUser()
 
-    if (error || !authUser) {
+      if (error || !authUser) {
+        return null
+      }
+
+      // Get user profile
+      const { data: userProfile } = await supabase.from("users").select("*").eq("id", authUser.id).single()
+
+      return userProfile
+    } catch (error) {
+      console.error("[v0] Error in getCurrentUserClient:", error)
       return null
     }
-
-    // Get user profile
-    const { data: userProfile } = await supabase.from("users").select("*").eq("id", authUser.id).single()
-
-    return userProfile
   }
 
   /**
    * Sign in with email and password
    */
   static async signIn(email: string, password: string) {
-    const supabase = createBrowserClient()
+    try {
+      const supabase = createBrowserClient()
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (error) {
-      throw new Error(error.message)
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return data
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Missing Supabase environment variables")) {
+        throw new Error("Authentication service is not configured. Please contact your administrator.")
+      }
+      throw error
     }
-
-    return data
   }
 
   /**
