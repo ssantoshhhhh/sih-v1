@@ -1,7 +1,133 @@
 import { createClient } from "@/lib/supabase/server"
-import type { Product } from "@/lib/types"
+import type { Product, ApiResponse } from "@/lib/types"
 
 export class ProductService {
+  /**
+   * Get products in API specification format with proper metadata structure
+   */
+  static async getProductsApiFormat(
+    options: {
+      page?: number
+      limit?: number
+      platformId?: string
+      categoryId?: string
+      search?: string
+      hasViolations?: boolean
+    } = {},
+  ): Promise<ApiResponse<Product>> {
+    const supabase = await createClient()
+    const { page = 1, limit = 20, platformId, categoryId, search, hasViolations } = options
+
+    let query = supabase
+      .from("products")
+      .select(
+        `
+        id,
+        name,
+        description,
+        price,
+        weight,
+        images,
+        raw_data,
+        url,
+        scraped_at,
+        updated_at,
+        platform:platforms(name, domain),
+        category:categories(name),
+        violations:violations(rule_type, severity, description, status)
+      `,
+        { count: "exact" },
+      )
+      .order("scraped_at", { ascending: false })
+
+    // Apply filters
+    if (platformId) {
+      query = query.eq("platform_id", platformId)
+    }
+
+    if (categoryId) {
+      query = query.eq("category_id", categoryId)
+    }
+
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`)
+    }
+
+    // Pagination
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+    query = query.range(from, to)
+
+    const { data: rawProducts, error, count } = await query
+
+    if (error) {
+      throw new Error(`Failed to fetch products: ${error.message}`)
+    }
+
+    // Transform to API specification format
+    const transformedProducts: Product[] = (rawProducts || []).map((product: any) => {
+      const violations = (product.violations || []).map((v: any) => ({
+        rule_id: v.rule_type?.toUpperCase().replace(/\s+/g, "_") || "UNKNOWN_RULE",
+        description: v.description || "No description available",
+        severity:
+          v.severity === "critical"
+            ? "High"
+            : v.severity === "high"
+              ? "High"
+              : v.severity === "medium"
+                ? "Medium"
+                : "Low",
+      }))
+
+      // Extract data from raw_data or set defaults
+      const rawData = product.raw_data || {}
+
+      return {
+        product_id: product.id,
+        product_name: product.name || "Unknown Product",
+        brand: rawData.brand || "Unknown Brand",
+        source: product.platform?.name || "Unknown Source",
+        source_url: product.url || null,
+        image_url:
+          product.images?.[0] ||
+          `https://placeholder.svg?height=200&width=200&query=${encodeURIComponent(product.name || "product")}`,
+        compliance_status: violations.length > 0 ? "Non-Compliant" : "Compliant",
+        violation_count: violations.length,
+        last_checked_at: product.updated_at || product.scraped_at,
+        extracted_data: {
+          mrp: rawData.mrp || rawData.price || null,
+          net_quantity: product.weight || rawData.net_quantity || null,
+          manufacturer_details: rawData.manufacturer_details || rawData.manufacturer || null,
+          country_of_origin: rawData.country_of_origin || null,
+          customer_care_contact: rawData.customer_care_contact || rawData.contact || null,
+        },
+        violations,
+      }
+    })
+
+    // Filter by violations if requested
+    let filteredProducts = transformedProducts
+    if (hasViolations !== undefined) {
+      filteredProducts = filteredProducts.filter((product) => {
+        const hasViolationsCount = product.violation_count > 0
+        return hasViolations ? hasViolationsCount : !hasViolationsCount
+      })
+    }
+
+    const totalItems = count || 0
+    const totalPages = Math.ceil(totalItems / limit)
+
+    return {
+      metadata: {
+        total_items: totalItems,
+        current_page: page,
+        items_per_page: limit,
+        total_pages: totalPages,
+      },
+      data: filteredProducts,
+    }
+  }
+
   /**
    * Get products with pagination and filtering
    */

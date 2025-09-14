@@ -28,22 +28,39 @@ export interface Category {
 }
 
 export interface Product {
-  id: string
-  platform_id: string
-  category_id?: string
-  external_id: string
-  name: string
-  description?: string
-  price?: number
-  weight?: string
-  dimensions?: string
-  images?: any
-  raw_data?: any
-  url?: string
-  scraped_at: string
-  updated_at: string
-  platform?: Platform
-  category?: Category
+  product_id: string
+  product_name: string
+  brand: string
+  source: string
+  source_url?: string
+  image_url: string
+  compliance_status: "Compliant" | "Non-Compliant" | "Pending"
+  violation_count: number
+  last_checked_at: string
+  extracted_data: {
+    mrp?: string
+    net_quantity?: string
+    manufacturer_details?: string
+    country_of_origin?: string
+    customer_care_contact?: string
+  }
+  violations: ProductViolation[]
+}
+
+export interface ProductViolation {
+  rule_id: string
+  description: string
+  severity: "High" | "Medium" | "Low"
+}
+
+export interface ApiResponse<T> {
+  metadata: {
+    total_items: number
+    current_page: number
+    items_per_page: number
+    total_pages: number
+  }
+  data: T[]
 }
 
 export interface Violation {

@@ -6,6 +6,11 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
+    const authHeader = request.headers.get("authorization")
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     // Check authentication
     const {
       data: { user },
@@ -23,7 +28,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined
     const hasViolations = searchParams.get("hasViolations") ? searchParams.get("hasViolations") === "true" : undefined
 
-    const result = await ProductService.getProducts({
+    const result = await ProductService.getProductsApiFormat({
       page,
       limit,
       platformId,
