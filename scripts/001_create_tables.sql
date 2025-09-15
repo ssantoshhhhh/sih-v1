@@ -142,3 +142,13 @@ CREATE POLICY "Users can create reports" ON public.reports
 
 CREATE POLICY "Users can update their own reports" ON public.reports
   FOR UPDATE USING (auth.uid() = generated_by);
+
+-- Add compliance fields to products table
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS compliance_score DECIMAL(5,2) DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS compliance_status TEXT DEFAULT 'pending' CHECK (compliance_status IN ('compliant', 'non_compliant', 'pending', 'under_review'));
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS violation_count INT DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS extracted_data JSONB;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS country_of_origin TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS manufacturer TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS last_scanned TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS brand TEXT;

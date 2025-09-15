@@ -1,9 +1,16 @@
 import re
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from app.models.product import Product, ComplianceStatus
 from app.models.violation import Violation, ViolationType, ViolationSeverity
 from app.core.config import settings
+import joblib
+import os
 
 @dataclass
 class ComplianceRule:
@@ -230,3 +237,137 @@ class LegalMetrologyRuleEngine:
         
         score = max(0, 100 - (weighted_violations / total_rules * 100))
         return round(score, 2)
+
+    def analyze_with_ml(self, products: List[Product]) -> Dict[str, Any]:
+        """
+        Use ML models to analyze products for anomalies and patterns
+        """
+        if not products:
+            return {}
+
+        # Prepare data for ML analysis
+        df = self._prepare_ml_data(products)
+
+        results = {
+            'anomaly_detection': self._detect_price_anomalies(df),
+            'clustering': self._cluster_products(df),
+            'insights': self._generate_ml_insights(df)
+        }
+
+        return results
+
+    def _prepare_ml_data(self, products: List[Product]) -> pd.DataFrame:
+        """Prepare product data for ML analysis"""
+        data = []
+        for product in products:
+            extracted = product.extracted_data or {}
+            data.append({
+                'id': product.id,
+                'price': product.price or extracted.get('price', 0),
+                'weight': self._extract_numeric_weight(product.weight or extracted.get('weight', '')),
+                'compliance_score': product.compliance_score,
+                'platform': product.platform_id,
+                'category': product.category_id,
+                'brand': product.brand or '',
+                'country_of_origin': product.country_of_origin or ''
+            })
+
+        return pd.DataFrame(data)
+
+    def _extract_numeric_weight(self, weight_str: str) -> float:
+        """Extract numeric weight value from string"""
+        if not weight_str:
+            return 0.0
+
+        # Extract numbers
+        import re
+        numbers = re.findall(r'\d+\.?\d*', weight_str.lower())
+        if numbers:
+            return float(numbers[0])
+        return 0.0
+
+    def _detect_price_anomalies(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Detect price anomalies using Isolation Forest"""
+        # Filter products with valid prices
+        price_data = df[df['price'] > 0][['price', 'weight']].fillna(0)
+
+        if len(price_data) < 10:
+            return {'anomalies': [], 'message': 'Insufficient data for anomaly detection'}
+
+        # Scale the data
+        scaler = StandardScaler()
+        scaled_data = scaler.fit_transform(price_data)
+
+        # Train Isolation Forest
+        iso_forest = IsolationForest(contamination=0.1, random_state=42)
+        anomalies = iso_forest.fit_predict(scaled_data)
+
+        # Get anomaly indices
+        anomaly_indices = df[df['price'] > 0].index[anomalies == -1].tolist()
+
+        return {
+            'anomalies': anomaly_indices,
+            'contamination_rate': 0.1,
+            'total_products_analyzed': len(price_data)
+        }
+
+    def _cluster_products(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Cluster products based on price and compliance"""
+        # Prepare clustering data
+        cluster_data = df[['price', 'compliance_score']].fillna(0)
+
+        if len(cluster_data) < 5:
+            return {'clusters': {}, 'message': 'Insufficient data for clustering'}
+
+        # Scale data
+        scaler = StandardScaler()
+        scaled_data = scaler.fit_transform(cluster_data)
+
+        # Perform K-means clustering
+        kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+        clusters = kmeans.fit_predict(scaled_data)
+
+        # Analyze clusters
+        cluster_analysis = {}
+        for i in range(3):
+            cluster_products = df[clusters == i]
+            cluster_analysis[f'cluster_{i}'] = {
+                'size': len(cluster_products),
+                'avg_price': cluster_products['price'].mean(),
+                'avg_compliance': cluster_products['compliance_score'].mean(),
+                'product_ids': cluster_products['id'].tolist()
+            }
+
+        return {
+            'clusters': cluster_analysis,
+            'cluster_centers': kmeans.cluster_centers_.tolist()
+        }
+
+    def _generate_ml_insights(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Generate insights from ML analysis"""
+        insights = {}
+
+        # Price distribution insights
+        if len(df[df['price'] > 0]) > 0:
+            price_stats = df[df['price'] > 0]['price'].describe()
+            insights['price_distribution'] = {
+                'mean': price_stats['mean'],
+                'median': price_stats['50%'],
+                'std': price_stats['std'],
+                'range': f"{price_stats['min']:.2f} - {price_stats['max']:.2f}"
+            }
+
+        # Compliance score insights
+        compliance_stats = df['compliance_score'].describe()
+        insights['compliance_distribution'] = {
+            'mean': compliance_stats['mean'],
+            'median': compliance_stats['50%'],
+            'high_compliance_count': len(df[df['compliance_score'] >= 80]),
+            'low_compliance_count': len(df[df['compliance_score'] < 50])
+        }
+
+        # Platform-wise insights
+        platform_stats = df.groupby('platform')['compliance_score'].agg(['mean', 'count'])
+        insights['platform_compliance'] = platform_stats.to_dict()
+
+        return insights

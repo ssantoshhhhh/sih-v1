@@ -20,6 +20,7 @@ class Product(Base):
     source = Column(String, nullable=False)  # Platform URL
     compliance_status = Column(Enum(ComplianceStatus), default=ComplianceStatus.PENDING)
     violation_count = Column(Integer, default=0)
+    compliance_score = Column(Float, default=0.0)
     extracted_data = Column(JSON)
     price = Column(Float)
     weight = Column(String)

@@ -46,8 +46,8 @@ def daily_compliance_scan(self):
                 )
                 
                 # Bulk scan platform
-                platform_result = await compliance_service.bulk_scan_platform(
-                    platform.id, 
+                platform_result = compliance_service.bulk_scan_platform(
+                    platform.id,
                     limit=100
                 )
                 
@@ -99,7 +99,7 @@ def scan_single_product(self, product_url: str, platform_id: int, category_id: i
             category_id=category_id
         )
         
-        result = await compliance_service.scan_product_from_url(scan_request)
+        result = compliance_service.scan_product_from_url(scan_request)
         
         logger.info(f"Product scan completed for URL: {product_url}")
         return result
@@ -116,39 +116,80 @@ def update_compliance_scores():
     db = SessionLocal()
     try:
         from app.services.compliance_engine import LegalMetrologyRuleEngine
-        
+
         product_service = ProductService(db)
         compliance_engine = LegalMetrologyRuleEngine()
-        
+
         # Get all products
         products = product_service.get_products(limit=10000)
-        
+
         updated_count = 0
         for product in products:
             try:
                 # Recalculate compliance score
                 compliance_score = compliance_engine.get_compliance_score(product)
-                
-                # Update product if score changed significantly
-                if abs((product.extracted_data or {}).get('compliance_score', 0) - compliance_score) > 5:
+
+                # Update product compliance_score field and extracted_data
+                if abs(product.compliance_score - compliance_score) > 5:
                     extracted_data = product.extracted_data or {}
                     extracted_data['compliance_score'] = compliance_score
-                    
+
                     from app.schemas.product import ProductUpdate
                     product_service.update_product(
                         product.id,
-                        ProductUpdate(extracted_data=extracted_data)
+                        ProductUpdate(
+                            compliance_score=compliance_score,
+                            extracted_data=extracted_data
+                        )
                     )
                     updated_count += 1
-                    
+
             except Exception as e:
                 logger.error(f"Error updating compliance score for product {product.id}: {str(e)}")
-        
+
         logger.info(f"Updated compliance scores for {updated_count} products")
         return {"updated_products": updated_count}
-        
+
     except Exception as e:
         logger.error(f"Compliance score update failed: {str(e)}")
+        raise
+    finally:
+        db.close()
+
+@celery_app.task
+def run_ml_analysis():
+    """Task to run ML analysis on products for anomaly detection and insights"""
+    db = SessionLocal()
+    try:
+        from app.services.compliance_engine import LegalMetrologyRuleEngine
+
+        product_service = ProductService(db)
+        compliance_engine = LegalMetrologyRuleEngine()
+
+        # Get all products for ML analysis
+        products = product_service.get_products(limit=10000)
+
+        if not products:
+            logger.info("No products found for ML analysis")
+            return {"message": "No products to analyze"}
+
+        # Run ML analysis
+        ml_results = compliance_engine.analyze_with_ml(products)
+
+        # Log insights
+        logger.info(f"ML Analysis completed: {ml_results}")
+
+        # Store ML results in database or cache (for now, just return)
+        return {
+            "analysis_completed": True,
+            "products_analyzed": len(products),
+            "anomalies_detected": len(ml_results.get('anomaly_detection', {}).get('anomalies', [])),
+            "clusters_found": len(ml_results.get('clustering', {}).get('clusters', {})),
+            "insights": ml_results.get('insights', {})
+        }
+
+    except Exception as e:
+        logger.error(f"ML analysis failed: {str(e)}")
         raise
     finally:
         db.close()
