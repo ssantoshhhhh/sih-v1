@@ -7,6 +7,7 @@ from app.services.product_service import ProductService
 from app.models.product import ComplianceStatus
 from typing import Dict, Any
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +47,10 @@ def daily_compliance_scan(self):
                 )
                 
                 # Bulk scan platform
-                platform_result = compliance_service.bulk_scan_platform(
+                platform_result = asyncio.run(compliance_service.bulk_scan_platform(
                     platform.id,
                     limit=100
-                )
+                ))
                 
                 results["scanned_platforms"] += 1
                 results["total_products_scanned"] += platform_result.get("total_scanned", 0)
