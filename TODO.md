@@ -11,6 +11,6 @@ k# TODO: Implement Web Scraping, ML Checks, Rule Engine, and Dashboard Enhanceme
 - [x] Update dashboard frontend to display products with compliance scores
 
 ## Pending Tasks
-- [ ] Install new dependencies
-- [ ] Run database migration
+- [x] Install new dependencies
+- [x] Run database migration
 - [ ] Test end-to-end functionality (scraping -> ML -> compliance -> dashboard)
