@@ -10,6 +10,8 @@ interface Stats {
   openViolations: number
   resolvedViolations: number
   productsScanned: number
+  compliantProducts: number
+  averageComplianceScore: number
 }
 
 export function StatsCards() {
@@ -18,6 +20,8 @@ export function StatsCards() {
     openViolations: 0,
     resolvedViolations: 0,
     productsScanned: 0,
+    compliantProducts: 0,
+    averageComplianceScore: 0,
   })
   const [loading, setLoading] = useState(true)
 
@@ -29,18 +33,25 @@ export function StatsCards() {
         // Get violation counts
         const { data: violations } = await supabase.from("violations").select("status")
 
-        const { data: products } = await supabase.from("products").select("id")
+        const { data: products } = await supabase.from("products").select("id, compliance_score, compliance_status")
 
         const totalViolations = violations?.length || 0
         const openViolations = violations?.filter((v) => v.status === "open").length || 0
         const resolvedViolations = violations?.filter((v) => v.status === "resolved").length || 0
         const productsScanned = products?.length || 0
 
+        // Calculate compliance stats
+        const compliantProducts = products?.filter(p => p.compliance_status === "compliant").length || 0
+        const validScores = products?.filter(p => p.compliance_score && p.compliance_score > 0).map(p => p.compliance_score) || []
+        const averageComplianceScore = validScores.length > 0 ? validScores.reduce((a, b) => a + b, 0) / validScores.length : 0
+
         setStats({
           totalViolations,
           openViolations,
           resolvedViolations,
           productsScanned,
+          compliantProducts,
+          averageComplianceScore,
         })
       } catch (error) {
         console.error("Error fetching stats:", error)
@@ -81,12 +92,27 @@ export function StatsCards() {
       color: "text-blue-600",
       bgColor: "bg-blue-50",
     },
+    {
+      title: "Compliant Products",
+      value: stats.compliantProducts,
+      icon: CheckCircle,
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-50",
+    },
+    {
+      title: "Avg Compliance Score",
+      value: Math.round(stats.averageComplianceScore),
+      icon: TrendingUp,
+      color: "text-purple-600",
+      bgColor: "bg-purple-50",
+      suffix: "%"
+    },
   ]
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[...Array(4)].map((_, i) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {[...Array(6)].map((_, i) => (
           <Card key={i}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Loading...</CardTitle>
@@ -102,7 +128,7 @@ export function StatsCards() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {cards.map((card, index) => {
         const Icon = card.icon
         return (
@@ -114,7 +140,9 @@ export function StatsCards() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{card.value.toLocaleString()}</div>
+              <div className="text-2xl font-bold">
+                {card.value.toLocaleString()}{card.suffix || ""}
+              </div>
             </CardContent>
           </Card>
         )
